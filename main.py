@@ -3,6 +3,7 @@ import db_handler
 import re
 import requests
 import random
+import time
 import datetime
 import logging
 from datetime import datetime
@@ -187,6 +188,7 @@ main_menu.row("🛠️ Услуги", "📄 О страховке")
 main_menu.row("✨ Оставить отзыв", "ℹ️ О компании")
 main_menu.row("📞 Контакты", "🤖 Спросить ИИ")
 main_menu.row("💡 Совет дня", "💸 Курсы валют")
+main_menu.row("🌐 Социальные сети")
 
 # Меню выбора типа ремонта
 repair_menu = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
@@ -718,10 +720,20 @@ def get_weather(msg):
         bot.register_next_step_handler(sent_msg, handle_region_selection)
         return
 
+    # Отправка индикатора действия и начального прогресс-бара
+    bot.send_chat_action(msg.chat.id, 'typing')
+    progress_msg = bot.send_message(msg.chat.id, "⏳ Загрузка погоды... [██     ]")
+
     current_url = f"https://api.openweathermap.org/data/2.5/weather?q={city_mapping[city]},BY&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
     forecast_url = f"https://api.openweathermap.org/data/2.5/forecast?q={city_mapping[city]},BY&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
-
     try:
+        time.sleep(0.5)
+        bot.edit_message_text(
+            chat_id=msg.chat.id,
+            message_id=progress_msg.message_id,
+            text="⏳ Загрузка погоды... [████  ]"
+        )
+
         current_response = requests.get(current_url, timeout=5)
         current_response.raise_for_status()
         current_data = current_response.json()
@@ -730,6 +742,13 @@ def get_weather(msg):
         wind_speed = current_data['wind']['speed']
         humidity = current_data['main']['humidity']
         current_advice = get_driving_advice(weather_desc, temp, wind_speed, humidity)
+
+        # Обновление прогресс-бара (этап 2)
+        bot.edit_message_text(
+            chat_id=msg.chat.id,
+            message_id=progress_msg.message_id,
+            text="⏳ Загрузка погоды... [███████]"
+        )
 
         forecast_response = requests.get(forecast_url, timeout=5)
         forecast_response.raise_for_status()
@@ -764,6 +783,12 @@ def get_weather(msg):
             response_text += f"Влажность: {info['humidity']}%\n"
             response_text += f"{advice}\n"
 
+        # Завершение прогресс-бара
+        bot.edit_message_text(
+            chat_id=msg.chat.id,
+            message_id=progress_msg.message_id,
+            text="✅ Погода загружена! [██████████]"
+        )
         bot.send_message(
             msg.chat.id,
             response_text,
@@ -772,11 +797,39 @@ def get_weather(msg):
         logging.info(f"Успешно получена погода для {city}: {weather_desc}, {temp}°C и прогноз на 5 дней")
     except requests.exceptions.RequestException as e:
         logging.error(f"Ошибка запроса погоды для {city}: {e}")
+        bot.edit_message_text(
+            chat_id=msg.chat.id,
+            message_id=progress_msg.message_id,
+            text="❌ Ошибка загрузки погоды. Попробуйте позже."
+        )
         bot.send_message(
             msg.chat.id,
             f"Не удалось получить данные о погоде для {city}. Попробуйте позже.",
             reply_markup=main_menu
         )
+
+# Функция отображения ссылок на социальные сети
+@bot.message_handler(func=lambda msg: msg.text == "🌐 Социальные сети")
+def show_social_media(msg):
+    db_handler.add_active_user(msg.chat.id)
+    text = (
+        "🌐 <b>Мы в социальных сетях</b>\n\n"
+        "Подписывайтесь, чтобы быть в курсе новостей и полезных советов от БЕЛТЕХОСМОТР:\n\n"
+        "<b>YouTube:</b> <a href='https://www.youtube.com/@Beltehosmotr_2003'>@Beltehosmotr_2003</a>\n"
+        "<b>Instagram:</b> <a href='https://www.instagram.com/beltehosmotr/'>beltehosmotr</a>\n"
+        "<b>Facebook:</b> <a href='https://www.facebook.com/beltehosmotr/'>beltehosmotr</a>\n"
+        "<b>Telegram:</b> <a href='https://t.me/beltehosmotr'>@beltehosmotr</a>\n"
+        "<b>TikTok:</b> <a href='https://www.tiktok.com/@beltehosmotr'>@beltehosmotr</a>\n\n"
+        "👉 Следите за нами и получайте актуальную информацию!"
+    )
+    bot.send_message(
+        msg.chat.id,
+        text,
+        parse_mode="HTML",
+        reply_markup=main_menu,
+        disable_web_page_preview=True
+    )
+    logging.info(f"Отправлены ссылки на социальные сети пользователю {msg.chat.id}")
 
 @bot.message_handler(commands=['start'])
 def welcome(message):
@@ -1044,8 +1097,21 @@ def send_news(chat_id, news_list, title):
 @bot.message_handler(func=lambda msg: msg.text == "📰 Свежие новости")
 def show_latest_news(msg):
     db_handler.add_active_user(msg.chat.id)
-    bot.send_message(msg.chat.id, "⏳ Загружаю новости...", reply_markup=main_menu)
-    send_news(msg.chat.id, db_handler.get_all_news(), "Свежие новости")
+    bot.send_chat_action(msg.chat.id, 'typing')
+    progress_msg = bot.send_message(msg.chat.id, "⏳ Загрузка новостей... [██     ]")
+    time.sleep(0.5)  # Имитация задержки для визуального эффекта
+    bot.edit_message_text(
+        chat_id=msg.chat.id,
+        message_id=progress_msg.message_id,
+        text="⏳ Загрузка новостей... [██████  ]"
+    )
+    news_list = db_handler.get_all_news()
+    bot.edit_message_text(
+        chat_id=msg.chat.id,
+        message_id=progress_msg.message_id,
+        text="✅ Новости загружены! [██████████]"
+    )
+    send_news(msg.chat.id, news_list, "Свежие новости")
 
 # Обработчик полной новости
 @bot.callback_query_handler(func=lambda call: call.data.startswith('read_'))
@@ -1096,8 +1162,21 @@ def handle_end_date(message, start_date):
         sent_msg = bot.send_message(message.chat.id, "❗ Начальная дата не может быть позже конечной.", reply_markup=cancel_menu)
         bot.register_next_step_handler(sent_msg, handle_start_date)
         return
-    bot.send_message(message.chat.id, "⏳ Ищу новости...", reply_markup=main_menu)
-    send_news(message.chat.id, db_handler.get_news_by_period(start_date, end_date), f"Новости с {start_date} по {end_date}")
+    bot.send_chat_action(message.chat.id, 'typing')
+    progress_msg = pół_msg = bot.send_message(message.chat.id, "⏳ Поиск новостей... [██     ]")
+    time.sleep(0.5)  # Имитация задержки
+    bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=progress_msg.message_id,
+        text="⏳ Поиск новостей... [██████  ]"
+    )
+    news_list = db_handler.get_news_by_period(start_date, end_date)
+    bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=progress_msg.message_id,
+        text="✅ Новости найдены! [██████████]"
+    )
+    send_news(message.chat.id, news_list, f"Новости с {start_date} по {end_date}")
 
 # Поиск новостей по ключевому слову
 @bot.message_handler(func=lambda msg: msg.text == "🔍 Поиск новостей")
@@ -1115,8 +1194,67 @@ def handle_keyword_search(message):
         sent_msg = bot.send_message(message.chat.id, "❗ Запрос не может быть пустым.", reply_markup=cancel_menu)
         bot.register_next_step_handler(sent_msg, handle_keyword_search)
         return
-    bot.send_message(message.chat.id, f"⏳ Ищу «{keyword}»...", reply_markup=main_menu)
-    send_news(message.chat.id, db_handler.search_news(keyword), f"Результаты по «{keyword}»")
+    bot.send_chat_action(message.chat.id, 'typing')
+    progress_msg = bot.send_message(message.chat.id, f"⏳ Поиск «{keyword}»... [██     ]")
+    time.sleep(0.5)  # Имитация задержки
+    bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=progress_msg.message_id,
+        text=f"⏳ Поиск «{keyword}»... [██████  ]"
+    )
+    news_list = db_handler.search_news(keyword)
+    bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=progress_msg.message_id,
+        text=f"✅ Поиск «{keyword}» завершен! [██████████]"
+    )
+    send_news(message.chat.id, news_list, f"Результаты по «{keyword}»")
+
+@bot.message_handler(commands=['update_news'])
+def update_news(message):
+    db_handler.add_active_user(message.chat.id)
+    bot.send_chat_action(message.chat.id, 'typing')
+    progress_msg = bot.send_message(message.chat.id, "⏳ Обновление новостей... [██     ]")
+    time.sleep(0.5)  # Имитация задержки
+    bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=progress_msg.message_id,
+        text="⏳ Обновление новостей... [████  ]"
+    )
+    try:
+        db_handler.parse_news_from_gto()
+        bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=progress_msg.message_id,
+            text="✅ Новости успешно обновлены! [██████████]"
+        )
+        bot.send_message(
+            message.chat.id,
+            "✅ <b>Новости успешно обновлены!</b>\n\n"
+            "Теперь вы можете посмотреть актуальные новости в разделе «📰 Новости».\n\n"
+            "👉 Хотите узнать, что нового?",
+            parse_mode="HTML",
+            reply_markup=telebot.types.InlineKeyboardMarkup().add(
+                telebot.types.InlineKeyboardButton("📰 Посмотреть новости", callback_data="show_news")
+            )
+        )
+    except Exception as e:
+        logging.error(f"Ошибка при обновлении новостей: {e}")
+        bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=progress_msg.message_id,
+            text="❌ Ошибка обновления новостей. [██████████]"
+        )
+        bot.send_message(
+            message.chat.id,
+            "❌ <b>Не удалось обновить новости</b>\n\n"
+            "Попробуйте снова позже или свяжитесь с нами.\n\n"
+            "👉 Вернитесь в меню или задайте вопрос ИИ!",
+            parse_mode="HTML",
+            reply_markup=telebot.types.InlineKeyboardMarkup().add(
+                telebot.types.InlineKeyboardButton("🤖 Спросить ИИ", callback_data="start_ai_mode")
+            )
+        )
 
 # Обработчик FAQ
 @bot.message_handler(func=lambda msg: msg.text == "💬 FAQ")
