@@ -7,7 +7,6 @@ import time
 from json.decoder import JSONDecodeError
 import logging
 from datetime import datetime
-import random
 from dotenv import load_dotenv
 import os
 import json
@@ -18,18 +17,29 @@ load_dotenv()
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Проверка наличия всех необходимых переменных окружения
+def check_env_variables():
+    required_vars = ['TELEGRAM_BOT_TOKEN', 'EXCHANGE_API_KEY', 'OPENWEATHER_API_KEY']
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    if missing_vars:
+        error_msg = f"Ошибка: отсутствуют переменные окружения: {', '.join(missing_vars)}"
+        logging.error(error_msg)
+        raise EnvironmentError(error_msg)
+
 # Токен бота и API-ключи
-TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8133560465:AAGDwkX86Pegjmd6WZqBwg6-5qjfaC9gsgY')
-EXCHANGE_API_KEY = os.getenv('EXCHANGE_API_KEY', '6e48c92c9426cd2dfd7d0d0e')
-OPENWEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY', '81f986beb7a5b44cb6ff318dc9d06af9')
+check_env_variables()
+TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+EXCHANGE_API_KEY = os.getenv('EXCHANGE_API_KEY')
+OPENWEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY')
 bot = telebot.TeleBot(TOKEN)
 
 # Настройки для ИИ API
-AI_API_URL = "https://api.intelligence.io.solutions/api/v1/chat/completions"
+AI_API_URL = os.getenv('AI_API_URL', 'https://api.intelligence.io.solutions/api/v1/chat/completions')
 AI_API_HEADERS = {
     "Content-Type": "application/json",
-    "Authorization": "Bearer io-v2-eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJvd25lciI6IjMyOWYyYjFlLWZkZGEtNGY4NC1iYzI2LTIxNjc3OGU5MzVkZiIsImV4cCI6NDkwNDYxMjY5Mn0.ibI8tb4tC9nUOEoaEA63tkkvYWExAf6Q94xPVY7Ob19ue1DD56XXSpXMjWkAg1nO0MhBLxbb9LQwNumyU2vnQA"
+    "Authorization": os.getenv('AI_API_TOKEN', 'Bearer io-v2-eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJvd25lciI6IjMyOWYyYjFlLWZkZGEtNGY4NC1iYzI2LTIxNjc3OGU5MzVkZiIsImV4cCI6NDkwNDYxMjY5Mn0.ibI8tb4tC9nUOEoaEA63tkkvYWExAf6Q94xPVY7Ob19ue1DD56XXSpXMjWkAg1nO0MhBLxbb9LQwNumyU2vnQA')
 }
+
 
 # Список советов дня
 tips = {
@@ -58,17 +68,17 @@ tips = {
         {"text": "Проверяйте состояние подвески каждые 20 тыс. км.", "details": "Изношенные амортизаторы или шаровые опоры снижают управляемость. Проверьте на СТО перед ТО."}
     ],
     "📜 Правила РБ": [
-        {"text": "Техосмотр обязателен раз в год для авто старше 10 лет.", "details": "Согласно Указу №349, легковые авто старше 10 лет проходят ТО ежегодно, до 10 лет — раз в 2 года. Штраф за просрочку — до 120 BYN в 2025."},
-        {"text": "Страховка ОСГО обязательна перед ТО.", "details": "Без действующей страховки ТО не пройти. Оформите ОСГО через Белгосстрах или онлайн на их сайте: https://bgs.by"},
-        {"text": "Штраф за отсутств ие ТО — до 3 базовых величин.", "details": "В 2025 году это до 120 BYN. При повторном нарушении штраф выше или возможно лишение прав. Пройдите ТО вовремя!"},
-        {"text": "Периодичность ТО для такси — каждые 6 месяцев.", "details": "Согласно законодательству РБ, автомобили, используемые для перевозки пассажиров, проходят ТО дважды в год."},
-        {"text": "Документы для ТО: паспорт, техпаспорт, страховка.", "details": "Также нужна квитанция об оплате госпошлины. Оплатить можно через ЕРИП или на сайте https://gto.by/pay/?step=1."},
-        {"text": "Запрещено тонировать лобовое стекло и передние боковые стёкла.", "details": "Согласно ПДД РБ, светопропускание этих стёкол должно быть не менее 70%. Нарушение может привести к отказу на ТО."},
-        {"text": "Детское кресло обязательно для детей до 12 лет или роста до 150 см.", "details": "Штраф за отсутствие кресла — до 4 базовых величин (160 BYN в 2025). Проверьте крепление кресла перед ТО."},
-        {"text": "Зимние шины обязательны с 1 декабря по 1 марта.", "details": "Штраф за нарушение — до 1 базовой величины (40 BYN в 2025). Убедитесь, что шины соответствуют требованиям перед ТО."},
-        {"text": "Перевозка грузов должна соответствовать нормам.", "details": "Груз не должен выступать более чем на 1 м сзади или 0,4 м по бокам без специальной маркировки. Нарушение проверяется на ТО."},
-        {"text": "Запрещено использовать авто с неисправными тормозами или рулевым управлением.", "details": "Такие неисправности выявляются на ТО, и эксплуатация авто запрещается до устранения. Проверьте системы заранее."}
-    ]
+    {"text": "Техосмотр обязателен раз в год для авто старше 10 лет.", "details": "Согласно Указу №349, легковые авто старше 10 лет проходят ТО ежегодно, до 10 лет — раз в 2 года. Штраф за отсутствие ТО — до 120 BYN в 2025."},
+    {"text": "Страховка ОСГО обязательна перед ТО.", "details": "Без действующей страховки ТО не пройти. Оформите ОСГО через Белгосстрах или онлайн на их сайте: https://bgs.by"},
+    {"text": "Штраф за отсутствие ТО — до 3 базовых величин.", "details": "В 2025 году это до 120 BYN. При повторном нарушении штраф выше или возможно лишение прав. Пройдите ТО вовремя!"},
+    {"text": "Периодичность ТО для такси — каждые 6 месяцев.", "details": "Согласно законодательству РБ, автомобили, используемые для перевозки пассажиров, проходят ТО дважды в год."},
+    {"text": "Документы для ТО: паспорт, техпаспорт, страховка.", "details": "Также нужна квитанция об оплате госпошлины. Оплатить можно через ЕРИП или на сайте https://gto.by/pay/?step=1."},
+    {"text": "Запрещено тонировать лобовое стекло и передние боковые стёкла.", "details": "Согласно ПДД РБ, светопропускание этих стёкол должно быть не менее 70%. Нарушение может привести к отказу на ТО."},
+    {"text": "Детское кресло обязательно для детей до 12 лет или роста до 150 см.", "details": "Штраф за отсутствие кресла — до 4 базовых величин (160 BYN в 2025). Проверьте крепление кресла перед ТО."},
+    {"text": "Зимние шины обязательны с 1 декабря по 1 марта.", "details": "Штраф за нарушение — до 1 базовой величины (40 BYN в 2025). Убедитесь, что шины соответствуют требованиям перед ТО."},
+    {"text": "Перевозка грузов должна соответствовать нормам.", "details": "Груз не должен выступать более чем на 1 м сзади или 0,4 м по бокам без специальной маркировки. Нарушение проверяется на ТО."},
+    {"text": "Запрещено использовать авто с неисправными тормозами или рулевым управлением.", "details": "Такие неисправности выявляются на ТО, и эксплуатация авто запрещается до устранения. Проверьте системы заранее."}
+]
 }
 
 # Меню выбора категории совета
@@ -188,7 +198,7 @@ main_menu.row("🛠️ Услуги", "📄 О страховке")
 main_menu.row("✨ Оставить отзыв", "ℹ️ О компании")
 main_menu.row("📞 Контакты", "🤖 Спросить ИИ")
 main_menu.row("💡 Совет дня", "💸 Курсы валют")
-main_menu.row("🌐 Социальные сети")
+main_menu.row("🌐 Наши социальные сети")
 
 # Меню выбора типа ремонта
 repair_menu = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
@@ -215,7 +225,7 @@ news_menu.row("🔍 Поиск новостей", "⬅️ Назад в глав
 # Меню FAQ
 faq_menu = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
 faq_menu.row("📄 Документы на ТО", "❓ ТО без страховки")
-faq_menu.row("⚠️ Штрафы за просрочку", "💸 Стоимость ТО")
+faq_menu.row("⚠️ Штрафы за отсутствие ТО", "💸 Стоимость ТО")
 faq_menu.row("📆 Периодичность ТО", "🔄 Изменить запись")
 faq_menu.row("🚫 Если не прошел ТО", "🧾 Онлайн-оплата")
 faq_menu.row("⬅️ Назад в главное меню")
@@ -643,6 +653,7 @@ city_mapping = {
     "Несвиж": "Nesvizh"
 }
 
+
 # Обработчик команды /weather и кнопки "Погода"
 @bot.message_handler(commands=['weather'])
 @bot.message_handler(func=lambda msg: msg.text == "☁️ Погода")
@@ -654,6 +665,7 @@ def start_weather_check(msg):
         reply_markup=region_menu
     )
     bot.register_next_step_handler(sent_msg, handle_region_selection)
+
 
 # Обработчик выбора региона
 def handle_region_selection(msg):
@@ -684,6 +696,7 @@ def handle_region_selection(msg):
     )
     bot.register_next_step_handler(sent_msg, get_weather)
 
+
 # Функция для получения рекомендаций по вождению
 def get_driving_advice(weather_desc, temp, wind_speed, humidity):
     weather_desc = weather_desc.lower()
@@ -699,6 +712,7 @@ def get_driving_advice(weather_desc, temp, wind_speed, humidity):
         return "☀️ Жарко. Убедитесь, что кондиционер работает, пейте воду."
     else:
         return "🚗 Погода благоприятная. Соблюдайте правила дорожного движения."
+
 
 # Функция получения погоды (текущая + прогноз на 5 дней)
 def get_weather(msg):
@@ -724,96 +738,145 @@ def get_weather(msg):
         bot.register_next_step_handler(sent_msg, handle_region_selection)
         return
 
-    # Отправка индикатора действия и начального прогресс-бара
-    bot.send_chat_action(msg.chat.id, 'typing')
-    progress_msg = bot.send_message(msg.chat.id, "⏳ Загрузка погоды... [██     ]")
+    city_en = city_mapping[city]
 
-    current_url = f"https://api.openweathermap.org/data/2.5/weather?q={city_mapping[city]},BY&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
-    forecast_url = f"https://api.openweathermap.org/data/2.5/forecast?q={city_mapping[city]},BY&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
-    try:
-        time.sleep(0.5)
-        bot.edit_message_text(
-            chat_id=msg.chat.id,
-            message_id=progress_msg.message_id,
-            text="⏳ Загрузка погоды... [████  ]"
+    # Проверяем кэш погоды
+    cached_weather = db_handler.get_cached_weather(city_en)
+    if cached_weather and (datetime.now() - datetime.strptime(cached_weather['timestamp'],
+                                                              '%Y-%m-%d %H:%M:%S')).total_seconds() < 3600:
+        logging.info(f"Используются кэшированные данные погоды для города {city_en}")
+        current_data = cached_weather['data']['current']
+        forecast_data = cached_weather['data']['forecast']
+        update_time = cached_weather['timestamp']
+    else:
+        # Отправка индикатора действия и начального прогресс-бара
+        bot.send_chat_action(msg.chat.id, 'typing')
+        progress_msg = bot.send_message(msg.chat.id, "⏳ Загрузка погоды... [██     ]")
+
+        current_url = f"https://api.openweathermap.org/data/2.5/weather?q={city_en},BY&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
+        forecast_url = f"https://api.openweathermap.org/data/2.5/forecast?q={city_en},BY&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
+        try:
+            time.sleep(0.5)
+            bot.edit_message_text(
+                chat_id=msg.chat.id,
+                message_id=progress_msg.message_id,
+                text="⏳ Загрузка погоды... [████  ]"
+            )
+
+            current_response = requests.get(current_url, timeout=5)
+            current_response.raise_for_status()
+            current_data = current_response.json()
+            if current_data.get('cod') != 200:
+                bot.edit_message_text(
+                    chat_id=msg.chat.id,
+                    message_id=progress_msg.message_id,
+                    text="❌ Ошибка загрузки погоды. Попробуйте позже."
+                )
+                bot.send_message(
+                    msg.chat.id,
+                    f"Не удалось получить данные о погоде для {city}. Попробуйте позже.",
+                    reply_markup=main_menu
+                )
+                return
+
+            bot.edit_message_text(
+                chat_id=msg.chat.id,
+                message_id=progress_msg.message_id,
+                text="⏳ Загрузка погоды... [███████]"
+            )
+
+            forecast_response = requests.get(forecast_url, timeout=5)
+            forecast_response.raise_for_status()
+            forecast_data = forecast_response.json()
+            if forecast_data.get('cod') != "200":
+                bot.edit_message_text(
+                    chat_id=msg.chat.id,
+                    message_id=progress_msg.message_id,
+                    text="❌ Ошибка загрузки прогноза. Попробуйте позже."
+                )
+                bot.send_message(
+                    msg.chat.id,
+                    f"Не удалось получить прогноз погоды для {city}. Попробуйте позже.",
+                    reply_markup=main_menu
+                )
+                return
+
+            update_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            db_handler.cache_weather(city_en, {'current': current_data, 'forecast': forecast_data})
+            logging.info(f"Погода для {city_en} закэширована")
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Ошибка запроса погоды для {city}: {e}")
+            bot.edit_message_text(
+                chat_id=msg.chat.id,
+                message_id=progress_msg.message_id,
+                text="❌ Ошибка загрузки погоды. Попробуйте позже."
+            )
+            bot.send_message(
+                msg.chat.id,
+                f"Не удалось получить данные о погоде для {city}. Попробуйте позже.",
+                reply_markup=main_menu
+            )
+            return
+
+    weather_desc = current_data['weather'][0]['description'].capitalize()
+    temp = current_data['main']['temp']
+    wind_speed = current_data['wind']['speed']
+    humidity = current_data['main']['humidity']
+    current_advice = get_driving_advice(weather_desc, temp, wind_speed, humidity)
+
+    daily_forecasts = {}
+    for forecast in forecast_data["list"]:
+        date = datetime.fromtimestamp(forecast["dt"]).strftime("%Y-%m-%d")
+        if date not in daily_forecasts and len(daily_forecasts) < 5:
+            daily_forecasts[date] = {
+                "temp": forecast["main"]["temp"],
+                "weather": forecast["weather"][0]["description"].capitalize(),
+                "wind_speed": forecast["wind"]["speed"],
+                "humidity": forecast["main"]["humidity"]
+            }
+
+    response_text = (
+        f"☁️ <b>Погода в {city}</b>\n"
+        f"📅 Обновлено: {datetime.strptime(update_time, '%Y-%m-%d %H:%M:%S').strftime('%d.%m.%Y %H:%M')}\n"
+        f"\n📅 Сегодня:\n"
+        f"Описание: {weather_desc}\n"
+        f"Температура: {temp:.1f}°C\n"
+        f"Ветер: {wind_speed} м/с\n"
+        f"Влажность: {humidity}%\n"
+        f"{current_advice}\n\n"
+        f"📅 Прогноз на 5 дней:\n"
+    )
+    for date, info in daily_forecasts.items():
+        advice = get_driving_advice(info["weather"], info["temp"], info["wind_speed"], info["humidity"])
+        response_text += (
+            f"\n📅 {date}\n"
+            f"Описание: {info['weather']}\n"
+            f"Температура: {info['temp']:.1f}°C\n"
+            f"Ветер: {info['wind_speed']} м/с\n"
+            f"Влажность: {info['humidity']}%\n"
+            f"{advice}\n"
         )
 
-        current_response = requests.get(current_url, timeout=5)
-        current_response.raise_for_status()
-        current_data = current_response.json()
-        weather_desc = current_data['weather'][0]['description'].capitalize()
-        temp = current_data['main']['temp']
-        wind_speed = current_data['wind']['speed']
-        humidity = current_data['main']['humidity']
-        current_advice = get_driving_advice(weather_desc, temp, wind_speed, humidity)
-
-        # Обновление прогресс-бара (этап 2)
-        bot.edit_message_text(
-            chat_id=msg.chat.id,
-            message_id=progress_msg.message_id,
-            text="⏳ Загрузка погоды... [███████]"
-        )
-
-        forecast_response = requests.get(forecast_url, timeout=5)
-        forecast_response.raise_for_status()
-        forecast_data = forecast_response.json()
-
-        daily_forecasts = {}
-        for forecast in forecast_data["list"]:
-            date = datetime.fromtimestamp(forecast["dt"]).strftime("%Y-%m-%d")
-            if date not in daily_forecasts and len(daily_forecasts) < 5:
-                daily_forecasts[date] = {
-                    "temp": forecast["main"]["temp"],
-                    "weather": forecast["weather"][0]["description"].capitalize(),
-                    "wind_speed": forecast["wind"]["speed"],
-                    "humidity": forecast["main"]["humidity"]
-                }
-
-        response_text = f"☁️ Погода в {city}:\n\n"
-        response_text += "📅 Сегодня:\n"
-        response_text += f"Описание: {weather_desc}\n"
-        response_text += f"Температура: {temp:.1f}°C\n"
-        response_text += f"Ветер: {wind_speed} м/с\n"
-        response_text += f"Влажность: {humidity}%\n"
-        response_text += f"{current_advice}\n\n"
-
-        response_text += "📅 Прогноз на 5 дней:\n"
-        for date, info in daily_forecasts.items():
-            advice = get_driving_advice(info["weather"], info["temp"], info["wind_speed"], info["humidity"])
-            response_text += f"\n📅 {date}\n"
-            response_text += f"Описание: {info['weather']}\n"
-            response_text += f"Температура: {info['temp']:.1f}°C\n"
-            response_text += f"Ветер: {info['wind_speed']} м/с\n"
-            response_text += f"Влажность: {info['humidity']}%\n"
-            response_text += f"{advice}\n"
-
-        # Завершение прогресс-бара
+    if 'progress_msg' in locals():
         bot.edit_message_text(
             chat_id=msg.chat.id,
             message_id=progress_msg.message_id,
             text="✅ Погода загружена! [██████████]"
         )
-        bot.send_message(
-            msg.chat.id,
-            response_text,
-            reply_markup=main_menu
-        )
-        logging.info(f"Успешно получена погода для {city}: {weather_desc}, {temp}°C и прогноз на 5 дней")
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Ошибка запроса погоды для {city}: {e}")
-        bot.edit_message_text(
-            chat_id=msg.chat.id,
-            message_id=progress_msg.message_id,
-            text="❌ Ошибка загрузки погоды. Попробуйте позже."
-        )
-        bot.send_message(
-            msg.chat.id,
-            f"Не удалось получить данные о погоде для {city}. Попробуйте позже.",
-            reply_markup=main_menu
-        )
+    else:
+        bot.send_message(msg.chat.id, "✅ Погода загружена! [██████████]")
+
+    bot.send_message(
+        msg.chat.id,
+        response_text,
+        reply_markup=main_menu,
+        parse_mode="HTML"
+    )
+    logging.info(f"Успешно отправлена погода для {city}: {weather_desc}, {temp}°C и прогноз на 5 дней")
 
 # Функция отображения ссылок на социальные сети
-@bot.message_handler(func=lambda msg: msg.text == "🌐 Социальные сети")
+@bot.message_handler(func=lambda msg: msg.text == "🌐 Наши социальные сети")
 def show_social_media(msg):
     db_handler.add_active_user(msg.chat.id)
     text = (
@@ -1311,7 +1374,7 @@ def answer_faq(msg):
             "💡 Подробности об оформлении страховки вы найдете в разделе «📄 О страховке»."
         ),
         "⚠️ Штрафы за отсутствие ТО": (
-            "👮 <b>Какие штрафы за просроченный техосмотр?</b>\n\n"
+            "👮 <b>Какие штрафы за отсутствие техосмотра?</b>\n\n"
             "Вождение автомобиля без действующего техосмотра влечет административную ответственность:\n"
             "🚨 Штраф: от 1 до 3 базовых величин (в 2025 году — до 120 BYN).\n"
             "🚨 При повторном нарушении: штраф до 5 базовых величин или лишение прав.\n"
