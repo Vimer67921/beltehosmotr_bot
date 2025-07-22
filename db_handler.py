@@ -3,6 +3,7 @@ import os
 import requests
 from datetime import datetime, timedelta
 import logging
+import json
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -80,10 +81,18 @@ def create_tables():
                     state TEXT DEFAULT '{}'
                 )
             ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS weather_cache (
+                    city TEXT PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    timestamp TEXT NOT NULL
+                )
+            ''')
             # Создание индексов для повышения производительности
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_bookings_chat_id ON bookings(chat_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_news_id ON news(id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_active_users_chat_id ON active_users(chat_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_weather_cache_city ON weather_cache(city)')
             conn.commit()
             logging.info("Таблицы базы данных и индексы успешно созданы.")
     except sqlite3.Error as e:
@@ -341,6 +350,38 @@ def parse_news_from_gto():
     except ValueError as e:
         logging.error(f"Ошибка парсинга JSON-ответа API: {e}")
         return []
+
+# Получение кэшированных данных о погоде
+def get_cached_weather(city):
+    # Получает кэшированные данные о погоде для указанного города
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT data, timestamp FROM weather_cache WHERE city = ?', (city,))
+            result = cursor.fetchone()
+            if result:
+                data, timestamp = result
+                return {'data': json.loads(data), 'timestamp': timestamp}
+            return None
+    except sqlite3.Error as e:
+        logging.error(f"Ошибка при получении кэшированных данных погоды для {city}: {e}")
+        return None
+
+# Кэширование данных о погоде
+def cache_weather(city, weather_data):
+    # Сохраняет данные о погоде в кэш
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'INSERT OR REPLACE INTO weather_cache (city, data, timestamp) VALUES (?, ?, ?)',
+                (city, json.dumps(weather_data), datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            )
+            conn.commit()
+            logging.info(f"Погода для {city} закэширована.")
+    except sqlite3.Error as e:
+        logging.error(f"Ошибка при кэшировании погоды для {city}: {e}")
+        raise
 
 # Очистка старых активных пользователей
 def clean_old_active_users(hours=1):
