@@ -4,7 +4,7 @@ import re
 import requests
 import random
 import time
-import datetime
+from json.decoder import JSONDecodeError
 import logging
 from datetime import datetime
 import random
@@ -295,7 +295,11 @@ def get_ai_response(user_message_text, conversation_history=None):
 
         response = requests.post(AI_API_URL, headers=AI_API_HEADERS, json=data, timeout=10)
         response.raise_for_status()
-        response_data = response.json()
+        try:
+            response_data = response.json()
+        except JSONDecodeError:
+            logging.error("Ошибка декодирования JSON от API")
+            return "Ошибка обработки ответа API. Попробуйте позже."
 
         if not response_data.get('choices'):
             logging.error(f"Ошибка API: Пустой ответ или отсутствует 'choices'. Ответ: {json.dumps(response_data, ensure_ascii=False)}")
@@ -1078,12 +1082,12 @@ def show_news_menu(msg):
     bot.send_message(msg.chat.id, "Выберите действие:", reply_markup=news_menu)
 
 # Отправка списка новостей
-def send_news(chat_id, news_list, title):
+def send_news(chat_id, news_list, title, page=1):
     if not news_list:
         bot.send_message(chat_id, f"📭 {title} не найдены. Попробуйте обновить новости через /update_news.", reply_markup=main_menu)
         return
     bot.send_message(chat_id, f"<b>🔎 {title}:</b>", parse_mode="HTML")
-    for news in news_list[:10]:
+    for news in news_list:
         if news['content'] == 'Контент недоступен' or not news['content']:
             preview = "Полный текст новости доступен по ссылке."
         else:
@@ -1092,6 +1096,19 @@ def send_news(chat_id, news_list, title):
         buttons.add(telebot.types.InlineKeyboardButton("📖 Читать", callback_data=f"read_{news['id']}"))
         text = f"<b>{news['title']}</b>\n<i>📅 {news['date']}</i>\n\n{preview}"
         bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=buttons)
+    # Добавляем кнопку для следующей страницы, если есть новости
+    if len(news_list) == 10:  # Предполагаем, что per_page=10
+        buttons = telebot.types.InlineKeyboardMarkup()
+        buttons.add(telebot.types.InlineKeyboardButton("➡️ Следующая страница", callback_data=f"next_news_page_{page + 1}"))
+        bot.send_message(chat_id, "Показать еще новости?", reply_markup=buttons)
+
+# Обработчик для следующей страницы новостей
+@bot.callback_query_handler(func=lambda call: call.data.startswith('next_news_page_'))
+def handle_next_news_page(call):
+    bot.answer_callback_query(call.id)
+    page = int(call.data.replace('next_news_page_', ''))
+    news_list = db_handler.get_all_news(page=page, per_page=10)
+    send_news(call.message.chat.id, news_list, f"Свежие новости (страница {page})", page=page)
 
 # Обработчик свежих новостей
 @bot.message_handler(func=lambda msg: msg.text == "📰 Свежие новости")
@@ -1105,13 +1122,13 @@ def show_latest_news(msg):
         message_id=progress_msg.message_id,
         text="⏳ Загрузка новостей... [██████  ]"
     )
-    news_list = db_handler.get_all_news()
+    news_list = db_handler.get_all_news(page=1, per_page=10)  # Используем пагинацию
     bot.edit_message_text(
         chat_id=msg.chat.id,
         message_id=progress_msg.message_id,
         text="✅ Новости загружены! [██████████]"
     )
-    send_news(msg.chat.id, news_list, "Свежие новости")
+    send_news(msg.chat.id, news_list, "Свежие новости", page=1)
 
 # Обработчик полной новости
 @bot.callback_query_handler(func=lambda call: call.data.startswith('read_'))
@@ -1423,20 +1440,6 @@ def start_booking(msg):
     bot.send_message(
         msg.chat.id,
         text,
-        parse_mode="HTML",
-        reply_markup=buttons,
-        disable_web_page_preview=True
-    )
-
-# Обработчик inline-кнопок для записи на техосмотр
-@bot.callback_query_handler(func=lambda call: call.data == "start_booking")
-def handle_command_actions(call):
-    bot.answer_callback_query(call.id)
-    buttons = telebot.types.InlineKeyboardMarkup()
-    buttons.add(telebot.types.InlineKeyboardButton("🌐 Перейти на сайт для записи", url="https://gto.by/"))
-    bot.send_message(
-        call.message.chat.id,
-        "🚗 Перейдите на сайт для записи на техосмотр:",
         parse_mode="HTML",
         reply_markup=buttons,
         disable_web_page_preview=True
