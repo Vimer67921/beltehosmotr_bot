@@ -219,8 +219,7 @@ repair_menu.row("❌ Отмена")
 
 # Меню новостей
 news_menu = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-news_menu.row("📰 Свежие новости", "📅 Новости за период")
-news_menu.row("🔍 Поиск новостей", "⬅️ Назад в главное меню")
+news_menu.row("📰 Свежие новости", "⬅️ Назад в главное меню")
 
 # Меню FAQ
 faq_menu = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
@@ -1211,84 +1210,6 @@ def show_full_news(call):
     else:
         bot.send_message(call.message.chat.id, text, parse_mode="HTML", disable_web_page_preview=True)
 
-# Поиск новостей по датам
-@bot.message_handler(func=lambda msg: msg.text == "📅 Новости за период")
-def start_period_search(msg):
-    db_handler.add_active_user(msg.chat.id)
-    sent_msg = bot.send_message(msg.chat.id, "Введите начальную дату (ДД.ММ.ГГГГ):", reply_markup=cancel_menu)
-    bot.register_next_step_handler(sent_msg, handle_start_date)
-
-def handle_start_date(message):
-    if message.text == "❌ Отмена":
-        return_to_main(message)
-        return
-    if not check_search_date(message.text):
-        sent_msg = bot.send_message(message.chat.id, "❗ Формат даты: ДД.ММ.ГГГГ.", reply_markup=cancel_menu)
-        bot.register_next_step_handler(sent_msg, handle_start_date)
-        return
-    sent_msg = bot.send_message(message.chat.id, "Введите конечную дату (ДД.ММ.ГГГГ):", reply_markup=cancel_menu)
-    bot.register_next_step_handler(sent_msg, handle_end_date, message.text)
-
-def handle_end_date(message, start_date):
-    if message.text == "❌ Отмена":
-        return_to_main(message)
-        return
-    end_date = message.text
-    if not check_search_date(end_date):
-        sent_msg = bot.send_message(message.chat.id, "❗ Формат даты: ДД.ММ.ГГГГ.", reply_markup=cancel_menu)
-        bot.register_next_step_handler(sent_msg, handle_end_date, start_date)
-        return
-    if datetime.strptime(start_date, '%d.%m.%Y') > datetime.strptime(end_date, '%d.%m.%Y'):
-        sent_msg = bot.send_message(message.chat.id, "❗ Начальная дата не может быть позже конечной.", reply_markup=cancel_menu)
-        bot.register_next_step_handler(sent_msg, handle_start_date)
-        return
-    bot.send_chat_action(message.chat.id, 'typing')
-    progress_msg = pół_msg = bot.send_message(message.chat.id, "⏳ Поиск новостей... [██     ]")
-    time.sleep(0.5)  # Имитация задержки
-    bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=progress_msg.message_id,
-        text="⏳ Поиск новостей... [██████  ]"
-    )
-    news_list = db_handler.get_news_by_period(start_date, end_date)
-    bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=progress_msg.message_id,
-        text="✅ Новости найдены! [██████████]"
-    )
-    send_news(message.chat.id, news_list, f"Новости с {start_date} по {end_date}")
-
-# Поиск новостей по ключевому слову
-@bot.message_handler(func=lambda msg: msg.text == "🔍 Поиск новостей")
-def start_keyword_search(msg):
-    db_handler.add_active_user(msg.chat.id)
-    sent_msg = bot.send_message(msg.chat.id, "Введите ключевое слово:", reply_markup=cancel_menu)
-    bot.register_next_step_handler(sent_msg, handle_keyword_search)
-
-def handle_keyword_search(message):
-    if message.text == "❌ Отмена":
-        return_to_main(message)
-        return
-    keyword = message.text.strip()
-    if not keyword:
-        sent_msg = bot.send_message(message.chat.id, "❗ Запрос не может быть пустым.", reply_markup=cancel_menu)
-        bot.register_next_step_handler(sent_msg, handle_keyword_search)
-        return
-    bot.send_chat_action(message.chat.id, 'typing')
-    progress_msg = bot.send_message(message.chat.id, f"⏳ Поиск «{keyword}»... [██     ]")
-    time.sleep(0.5)  # Имитация задержки
-    bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=progress_msg.message_id,
-        text=f"⏳ Поиск «{keyword}»... [██████  ]"
-    )
-    news_list = db_handler.search_news(keyword)
-    bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=progress_msg.message_id,
-        text=f"✅ Поиск «{keyword}» завершен! [██████████]"
-    )
-    send_news(message.chat.id, news_list, f"Результаты по «{keyword}»")
 
 @bot.message_handler(commands=['update_news'])
 def update_news(message):
@@ -1711,4 +1632,9 @@ def process_payment(call):
 if __name__ == '__main__':
     logging.info("Бот запущен...")
     db_handler.create_tables()
+    try:
+        bot.delete_webhook()  # Удаляем существующий вебхук
+        logging.info("Вебхук успешно удален")
+    except Exception as e:
+        logging.error(f"Ошибка при удалении вебхука: {e}")
     bot.polling(none_stop=True, skip_pending=True)
