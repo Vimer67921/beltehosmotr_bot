@@ -6,7 +6,14 @@ import logging
 import json
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.DEBUG,  # Установим уровень DEBUG для максимальной детализации
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bot_logs.log'),  # Логи будут записываться в файл
+        logging.StreamHandler()  # Вывод в консоль
+    ]
+)
 
 # Создание директории для базы данных, если она не существует
 DATABASE_DIR = 'database'
@@ -18,10 +25,10 @@ DB_PATH = os.path.join(DATABASE_DIR, 'bookings.db')
 
 # Получение соединения с базой данных
 def get_connection():
-    # Создает и возвращает новое соединение с SQLite
     try:
         conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        conn.execute('PRAGMA foreign_keys = ON')  # Включение поддержки внешних ключей
+        conn.execute('PRAGMA foreign_keys = ON')
+        logging.debug(f"Успешное подключение к базе данных: {DB_PATH}")
         return conn
     except sqlite3.Error as e:
         logging.error(f"Не удалось подключиться к базе данных: {e}")
@@ -29,12 +36,12 @@ def get_connection():
 
 # Проверка существования столбца в таблице
 def check_column_exists(table_name, column_name):
-    # Проверяет, существует ли столбец в указанной таблице
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(f"PRAGMA table_info({table_name})")
             columns = [info[1] for info in cursor.fetchall()]
+            logging.debug(f"Проверка столбца {column_name} в таблице {table_name}: {column_name in columns}")
             return column_name in columns
     except sqlite3.Error as e:
         logging.error(f"Ошибка при проверке столбца {column_name} в таблице {table_name}: {e}")
@@ -42,7 +49,6 @@ def check_column_exists(table_name, column_name):
 
 # Создание и миграция таблиц
 def create_tables():
-    # Создает таблицы базы данных, если они не существуют, и добавляет индексы
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -88,7 +94,6 @@ def create_tables():
                     timestamp TEXT NOT NULL
                 )
             ''')
-            # Создание индексов для повышения производительности
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_bookings_chat_id ON bookings(chat_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_news_id ON news(id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_active_users_chat_id ON active_users(chat_id)')
@@ -101,7 +106,6 @@ def create_tables():
 
 # Очистка таблицы новостей
 def clear_news_table():
-    # Удаляет все записи из таблицы новостей
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -115,7 +119,6 @@ def clear_news_table():
 
 # Добавление записи на техосмотр
 def add_booking(chat_id, phone, car, date):
-    # Добавляет новую запись в базу данных
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -132,7 +135,6 @@ def add_booking(chat_id, phone, car, date):
 
 # Получение всех записей
 def get_all_bookings():
-    # Возвращает все записи из базы данных
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -144,7 +146,6 @@ def get_all_bookings():
 
 # Добавление или обновление активного пользователя
 def add_active_user(chat_id):
-    # Добавляет или обновляет активного пользователя с текущей меткой времени
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -160,7 +161,6 @@ def add_active_user(chat_id):
 
 # Получение активных пользователей
 def get_active_users():
-    # Возвращает все chat_id активных пользователей
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -172,7 +172,6 @@ def get_active_users():
 
 # Получение истории пользователя
 def get_user_history(chat_id, limit=3):
-    # Возвращает последние записи пользователя с заданным лимитом
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -187,7 +186,6 @@ def get_user_history(chat_id, limit=3):
 
 # Добавление отзыва
 def add_feedback(chat_id, feedback_text, rating=None, username=None):
-    # Добавляет новый отзыв в базу данных
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -204,7 +202,6 @@ def add_feedback(chat_id, feedback_text, rating=None, username=None):
 
 # Получение времени последнего отзыва
 def get_last_feedback_time(chat_id):
-    # Возвращает временную метку последнего отзыва пользователя
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -226,7 +223,6 @@ def get_last_feedback_time(chat_id):
 
 # Получение всех новостей с пагинацией
 def get_all_news(page=1, per_page=10):
-    # Возвращает все новости с пагинацией, отсортированные по ID по убыванию
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -236,14 +232,15 @@ def get_all_news(page=1, per_page=10):
                 (per_page, offset)
             )
             rows = cursor.fetchall()
-            return [{'id': r[0], 'title': r[1], 'date': r[2], 'url': r[3], 'content': r[4] or ''} for r in rows]
+            news = [{'id': r[0], 'title': r[1], 'date': r[2], 'url': r[3], 'content': r[4] or ''} for r in rows]
+            logging.debug(f"Получено {len(news)} новостей для страницы {page}")
+            return news
     except sqlite3.Error as e:
         logging.error(f"Ошибка при получении новостей: {e}")
         return []
 
 # Получение новостей за период
 def get_news_by_period(start_date, end_date):
-    # Возвращает новости за указанный диапазон дат
     try:
         start = datetime.strptime(start_date, '%d.%m.%Y')
         end = datetime.strptime(end_date, '%d.%m.%Y')
@@ -264,6 +261,7 @@ def get_news_by_period(start_date, end_date):
                 except ValueError:
                     logging.warning(f"Неверный формат даты в новости: {news['date']}")
                     continue
+            logging.debug(f"Найдено {len(filtered)} новостей за период {start_date} - {end_date}")
             return filtered
     except sqlite3.Error as e:
         logging.error(f"Ошибка при получении новостей за период: {e}")
@@ -271,7 +269,6 @@ def get_news_by_period(start_date, end_date):
 
 # Поиск новостей по ключевому слову
 def search_news(keyword):
-    # Ищет новости по ключевому слову в заголовке или содержимом
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -281,19 +278,22 @@ def search_news(keyword):
                 (keyword, keyword)
             )
             rows = cursor.fetchall()
-            return [{'id': r[0], 'title': r[1], 'date': r[2], 'url': r[3], 'content': r[4] or ''} for r in rows]
+            news = [{'id': r[0], 'title': r[1], 'date': r[2], 'url': r[3], 'content': r[4] or ''} for r in rows]
+            logging.debug(f"Найдено {len(news)} новостей по ключевому слову '{keyword}'")
+            return news
     except sqlite3.Error as e:
         logging.error(f"Ошибка при поиске новостей с ключевым словом '{keyword}': {e}")
         return []
 
 # Парсинг новостей с API GTO
 def parse_news_from_gto():
-    # Получает и сохраняет новости с API GTO
     api_url = 'https://gto.by/api/v2/news/list.php'
     try:
+        logging.info(f"Начало запроса новостей с {api_url}")
         response = requests.get(api_url, timeout=10)
         response.raise_for_status()
         news_data = response.json()
+        logging.debug(f"Получено данных от API: {len(news_data)} записей")
         if not isinstance(news_data, list):
             logging.error("API вернул неверный формат данных")
             return []
@@ -353,7 +353,6 @@ def parse_news_from_gto():
 
 # Получение кэшированных данных о погоде
 def get_cached_weather(city):
-    # Получает кэшированные данные о погоде для указанного города
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -361,7 +360,9 @@ def get_cached_weather(city):
             result = cursor.fetchone()
             if result:
                 data, timestamp = result
+                logging.debug(f"Кэшированные данные погоды для {city} найдены: {timestamp}")
                 return {'data': json.loads(data), 'timestamp': timestamp}
+            logging.debug(f"Кэшированных данных для {city} не найдено")
             return None
     except sqlite3.Error as e:
         logging.error(f"Ошибка при получении кэшированных данных погоды для {city}: {e}")
@@ -369,7 +370,6 @@ def get_cached_weather(city):
 
 # Кэширование данных о погоде
 def cache_weather(city, weather_data):
-    # Сохраняет данные о погоде в кэш
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -385,7 +385,6 @@ def cache_weather(city, weather_data):
 
 # Очистка старых активных пользователей
 def clean_old_active_users(hours=1):
-    # Удаляет активных пользователей с взаимодействиями старше указанного времени
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
